@@ -49,6 +49,7 @@ esp_err_t webserver_init(void)
         { .uri = "/",         .method = HTTP_GET, .handler = page_handler, .user_ctx = (void *)PAGE_DASHBOARD },
         { .uri = "/settings", .method = HTTP_GET, .handler = page_handler, .user_ctx = (void *)PAGE_SETTINGS },
         { .uri = "/wifi",     .method = HTTP_GET, .handler = page_handler, .user_ctx = (void *)PAGE_WIFI },
+        { .uri = "/datatest", .method = HTTP_GET, .handler = page_handler, .user_ctx = (void *)PAGE_DATATEST },
     };
     for (int i = 0; i < sizeof(pages) / sizeof(pages[0]); i++) {
         httpd_register_uri_handler(s_server, &pages[i]);

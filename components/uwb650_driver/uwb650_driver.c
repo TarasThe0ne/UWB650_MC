@@ -55,6 +55,16 @@ static struct {
     uint16_t        target_addr;
     uwb650_ranging_cb_t ranging_cb;
 
+    // Data transmission test
+    uwb650_data_state_t data_state;
+    bool            data_mode;       // RX task routes non-AT lines to callback
+    TaskHandle_t    data_tx_task;
+    uint16_t        data_target_addr;
+    uint32_t        data_interval_ms;
+    uwb650_data_rx_cb_t data_rx_cb;
+    uwb650_data_stats_t data_stats;
+    uint32_t        data_tx_seq;
+
     // Shared results
     SemaphoreHandle_t data_mutex;
     uwb650_range_result_t last_result;
@@ -192,6 +202,26 @@ static void process_line(const char *line)
 {
     ESP_LOGI(TAG, "RX: %s", line);
 
+    // In data receive mode, route non-AT lines to data callback
+    if (s_drv.data_mode && s_drv.data_state == UWB650_DATA_RECEIVING) {
+        // AT responses still handled normally
+        if (strcmp(line, RESP_OK) != 0 && strcmp(line, RESP_ERROR) != 0 &&
+            strncmp(line, RESP_RANGING, strlen(RESP_RANGING)) != 0 &&
+            !strstr(line, RESP_STARTUP)) {
+            // This is received UWB data
+            xSemaphoreTake(s_drv.data_mutex, portMAX_DELAY);
+            s_drv.data_stats.packets_received++;
+            s_drv.data_stats.bytes_received += strlen(line);
+            s_drv.data_stats.last_rx_time_ms = (uint32_t)(esp_timer_get_time() / 1000);
+            xSemaphoreGive(s_drv.data_mutex);
+
+            if (s_drv.data_rx_cb) {
+                s_drv.data_rx_cb(line, strlen(line));
+            }
+            return;
+        }
+    }
+
     // Check for "Finished Startup"
     if (strstr(line, RESP_STARTUP)) {
         s_drv.module_ready = true;
@@ -246,11 +276,32 @@ esp_err_t uwb650_send_cmd(const char *cmd, char *resp_out, size_t resp_len,
     ESP_LOGI(TAG, "TX: %.*s", n - 2, tx);  // log without \r\n
     uart_write_bytes(UWB_UART_NUM, tx, n);
 
-    // Wait for OK or ERROR
-    bool got = xSemaphoreTake(s_drv.resp_sem, pdMS_TO_TICKS(timeout_ms)) == pdTRUE;
+    // Wait for OK or ERROR.
+    // Module firmware V1.2.1+ may not send OK/ERROR after query responses —
+    // it sends data line(s) only. We poll in short intervals so we can detect
+    // when data has arrived and give a brief extra window for OK terminator.
+    bool got = false;
+    uint32_t elapsed = 0;
+    const uint32_t poll_ms = 50;
+    while (elapsed < timeout_ms) {
+        if (xSemaphoreTake(s_drv.resp_sem, pdMS_TO_TICKS(poll_ms)) == pdTRUE) {
+            got = true;
+            break;
+        }
+        elapsed += poll_ms;
+        // If data arrived in resp_buf but no OK/ERROR yet, wait briefly then give up
+        if (s_drv.resp_buf[0] != '\0') {
+            got = xSemaphoreTake(s_drv.resp_sem, pdMS_TO_TICKS(150)) == pdTRUE;
+            break;
+        }
+    }
 
     esp_err_t ret;
-    if (!got) {
+    if (!got && s_drv.resp_buf[0] != '\0') {
+        // Data received but no OK/ERROR terminator — treat as success
+        ESP_LOGI(TAG, "CMD OK (no terminator): %s (resp: '%s')", cmd, s_drv.resp_buf);
+        ret = ESP_OK;
+    } else if (!got) {
         ESP_LOGW(TAG, "CMD timeout (%lums): %s", (unsigned long)timeout_ms, cmd);
         s_drv.stats.timeout_count++;
         ret = ESP_ERR_TIMEOUT;
@@ -725,4 +776,164 @@ void uwb650_reset_stats(void)
     memset(&s_drv.stats, 0, sizeof(s_drv.stats));
     xSemaphoreGive(s_drv.data_mutex);
     ESP_LOGI(TAG, "Statistics reset");
+}
+
+// ---- Raw UART write ----
+
+void uwb650_uart_write_raw(const void *data, size_t len)
+{
+    if (s_drv.initialized) {
+        uart_write_bytes(UWB_UART_NUM, data, len);
+    }
+}
+
+// ---- Data transmission test ----
+
+#define DATA_TX_TASK_STACK  4096
+#define DATA_TX_TASK_PRIO   5
+
+static void data_tx_task_fn(void *arg)
+{
+    TickType_t last_wake = xTaskGetTickCount();
+    // Simulated coordinates near Astrakhan
+    float lat = 46.349700f, lon = 48.040800f;
+
+    ESP_LOGI(TAG, "Data TX task started (target=%04X, interval=%lums)",
+             s_drv.data_target_addr, (unsigned long)s_drv.data_interval_ms);
+
+    while (s_drv.data_state == UWB650_DATA_TRANSMITTING) {
+        s_drv.data_tx_seq++;
+        uint32_t ts = (uint32_t)(esp_timer_get_time() / 1000);
+
+        // Simulate slow movement
+        lat += 0.000005f * ((float)((s_drv.data_tx_seq % 40) - 20));
+        lon += 0.000005f * ((float)((s_drv.data_tx_seq % 60) - 30));
+
+        // NMEA-like sentence: $UWBTX,seq,timestamp_ms,lat,lon*XX
+        char pkt[128];
+        int n = snprintf(pkt, sizeof(pkt),
+            "$UWBTX,%lu,%lu,%.6f,%.6f*00\r\n",
+            (unsigned long)s_drv.data_tx_seq,
+            (unsigned long)ts, lat, lon);
+
+        // Write raw data to UART — module sends as UWB packet
+        uart_write_bytes(UWB_UART_NUM, pkt, n);
+
+        xSemaphoreTake(s_drv.data_mutex, portMAX_DELAY);
+        s_drv.data_stats.packets_sent++;
+        s_drv.data_stats.bytes_sent += n;
+        xSemaphoreGive(s_drv.data_mutex);
+
+        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(s_drv.data_interval_ms));
+    }
+
+    ESP_LOGI(TAG, "Data TX task stopped (%lu packets sent)",
+             (unsigned long)s_drv.data_stats.packets_sent);
+    s_drv.data_tx_task = NULL;
+    vTaskDelete(NULL);
+}
+
+esp_err_t uwb650_data_tx_start(uint16_t target_addr, uint32_t interval_ms)
+{
+    if (!s_drv.initialized) return ESP_ERR_INVALID_STATE;
+    if (s_drv.data_state != UWB650_DATA_IDLE) return ESP_ERR_INVALID_STATE;
+    if (s_drv.ranging_active) {
+        ESP_LOGW(TAG, "Stopping ranging before data test");
+        uwb650_ranging_stop();
+    }
+
+    // Configure module: disable RX, set target
+    uwb650_set_rx_enable(0);
+    char cmd[32];
+    snprintf(cmd, sizeof(cmd), "TXTARGET=%04X", target_addr);
+    char resp[64];
+    uwb650_send_cmd(cmd, resp, sizeof(resp), UWB650_CMD_TIMEOUT_MS);
+
+    // Reset stats
+    xSemaphoreTake(s_drv.data_mutex, portMAX_DELAY);
+    memset(&s_drv.data_stats, 0, sizeof(s_drv.data_stats));
+    s_drv.data_stats.start_time_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    xSemaphoreGive(s_drv.data_mutex);
+
+    s_drv.data_target_addr = target_addr;
+    s_drv.data_interval_ms = interval_ms;
+    s_drv.data_tx_seq = 0;
+    s_drv.data_state = UWB650_DATA_TRANSMITTING;
+    s_drv.data_mode = true;
+
+    BaseType_t ok = xTaskCreate(data_tx_task_fn, "uwb_dtx", DATA_TX_TASK_STACK,
+                                 NULL, DATA_TX_TASK_PRIO, &s_drv.data_tx_task);
+    if (ok != pdPASS) {
+        s_drv.data_state = UWB650_DATA_IDLE;
+        s_drv.data_mode = false;
+        uwb650_set_rx_enable(1);
+        return ESP_FAIL;
+    }
+
+    return ESP_OK;
+}
+
+esp_err_t uwb650_data_rx_start(uwb650_data_rx_cb_t cb)
+{
+    if (!s_drv.initialized) return ESP_ERR_INVALID_STATE;
+    if (s_drv.data_state != UWB650_DATA_IDLE) return ESP_ERR_INVALID_STATE;
+    if (s_drv.ranging_active) {
+        ESP_LOGW(TAG, "Stopping ranging before data test");
+        uwb650_ranging_stop();
+    }
+
+    // Ensure receiver is ready
+    uwb650_set_rx_enable(1);
+    uwb650_set_rx_show_src(1);
+
+    // Reset stats
+    xSemaphoreTake(s_drv.data_mutex, portMAX_DELAY);
+    memset(&s_drv.data_stats, 0, sizeof(s_drv.data_stats));
+    s_drv.data_stats.start_time_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    xSemaphoreGive(s_drv.data_mutex);
+
+    s_drv.data_rx_cb = cb;
+    s_drv.data_state = UWB650_DATA_RECEIVING;
+    s_drv.data_mode = true;
+
+    ESP_LOGI(TAG, "Data RX mode started");
+    return ESP_OK;
+}
+
+esp_err_t uwb650_data_stop(void)
+{
+    if (s_drv.data_state == UWB650_DATA_IDLE) return ESP_OK;
+
+    uwb650_data_state_t prev_state = s_drv.data_state;
+    s_drv.data_state = UWB650_DATA_IDLE;
+
+    // Wait for TX task to finish
+    if (prev_state == UWB650_DATA_TRANSMITTING) {
+        for (int i = 0; i < 30 && s_drv.data_tx_task != NULL; i++) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+    }
+
+    s_drv.data_mode = false;
+    s_drv.data_rx_cb = NULL;
+
+    // Restore RX enable
+    uwb650_set_rx_enable(1);
+
+    ESP_LOGI(TAG, "Data test stopped (sent=%lu, received=%lu)",
+             (unsigned long)s_drv.data_stats.packets_sent,
+             (unsigned long)s_drv.data_stats.packets_received);
+    return ESP_OK;
+}
+
+uwb650_data_state_t uwb650_data_state(void)
+{
+    return s_drv.data_state;
+}
+
+void uwb650_data_get_stats(uwb650_data_stats_t *out)
+{
+    xSemaphoreTake(s_drv.data_mutex, portMAX_DELAY);
+    *out = s_drv.data_stats;
+    xSemaphoreGive(s_drv.data_mutex);
 }

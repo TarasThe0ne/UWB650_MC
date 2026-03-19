@@ -17,7 +17,7 @@
 
 static const char *TAG = "rest";
 
-#define FW_VERSION "0.2.1"
+#define FW_VERSION "0.3.0"
 
 // ---- Helpers ----
 
@@ -418,6 +418,88 @@ static esp_err_t wifi_disconnect_handler(httpd_req_t *req)
     return send_ok(req, "Disconnected");
 }
 
+// ---- POST /api/datatest/start ----
+
+static void data_rx_ws_cb(const char *data, int len)
+{
+    webserver_ws_broadcast_data(data, len);
+}
+
+static esp_err_t datatest_start_handler(httpd_req_t *req)
+{
+    cJSON *json = read_body_json(req);
+    if (!json) return send_err(req, 400, "Invalid JSON");
+
+    cJSON *mode_j = cJSON_GetObjectItem(json, "mode");
+    if (!mode_j || !mode_j->valuestring) {
+        cJSON_Delete(json);
+        return send_err(req, 400, "Missing 'mode' (tx or rx)");
+    }
+
+    esp_err_t err;
+    if (strcmp(mode_j->valuestring, "tx") == 0) {
+        cJSON *target_j = cJSON_GetObjectItem(json, "targetAddr");
+        cJSON *interval_j = cJSON_GetObjectItem(json, "intervalMs");
+        uint16_t target = 0x0001;
+        uint32_t interval = 200;
+        if (target_j && target_j->valuestring)
+            target = (uint16_t)strtol(target_j->valuestring, NULL, 16);
+        if (interval_j) interval = (uint32_t)interval_j->valueint;
+        if (interval < 50) interval = 50;
+
+        cJSON_Delete(json);
+        err = uwb650_data_tx_start(target, interval);
+        if (err == ESP_OK) return send_ok(req, "Data TX started");
+        return send_err(req, 500, "Failed to start TX");
+    } else if (strcmp(mode_j->valuestring, "rx") == 0) {
+        cJSON_Delete(json);
+        err = uwb650_data_rx_start(data_rx_ws_cb);
+        if (err == ESP_OK) return send_ok(req, "Data RX started");
+        return send_err(req, 500, "Failed to start RX");
+    }
+
+    cJSON_Delete(json);
+    return send_err(req, 400, "mode must be 'tx' or 'rx'");
+}
+
+// ---- POST /api/datatest/stop ----
+
+static esp_err_t datatest_stop_handler(httpd_req_t *req)
+{
+    uwb650_data_stop();
+    return send_ok(req, "Data test stopped");
+}
+
+// ---- GET /api/datatest/status ----
+
+static esp_err_t datatest_status_handler(httpd_req_t *req)
+{
+    uwb650_data_stats_t st;
+    uwb650_data_get_stats(&st);
+    uwb650_data_state_t state = uwb650_data_state();
+
+    uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    uint32_t elapsed_ms = (st.start_time_ms > 0) ? (now_ms - st.start_time_ms) : 0;
+    float elapsed_s = elapsed_ms / 1000.0f;
+    float tx_rate = (elapsed_s > 0) ? (float)st.bytes_sent / elapsed_s : 0;
+    float rx_rate = (elapsed_s > 0) ? (float)st.bytes_received / elapsed_s : 0;
+
+    cJSON *r = cJSON_CreateObject();
+    const char *state_str = "idle";
+    if (state == UWB650_DATA_TRANSMITTING) state_str = "tx";
+    else if (state == UWB650_DATA_RECEIVING) state_str = "rx";
+    cJSON_AddStringToObject(r, "state", state_str);
+    cJSON_AddNumberToObject(r, "packetsSent", st.packets_sent);
+    cJSON_AddNumberToObject(r, "packetsReceived", st.packets_received);
+    cJSON_AddNumberToObject(r, "bytesSent", st.bytes_sent);
+    cJSON_AddNumberToObject(r, "bytesReceived", st.bytes_received);
+    cJSON_AddNumberToObject(r, "elapsedMs", elapsed_ms);
+    cJSON_AddNumberToObject(r, "txBytesPerSec", tx_rate);
+    cJSON_AddNumberToObject(r, "rxBytesPerSec", rx_rate);
+
+    return send_json(req, r);
+}
+
 // ---- POST /api/system/ota ----
 
 static esp_err_t ota_handler(httpd_req_t *req)
@@ -531,6 +613,9 @@ void rest_api_init(httpd_handle_t server)
     REG(HTTP_POST, "/api/uwb/stats/reset", stats_reset_handler);
     REG(HTTP_POST, "/api/uwb/query",       uwb_query_handler);
     REG(HTTP_POST, "/api/uwb/command",     uwb_command_handler);
+    REG(HTTP_POST, "/api/datatest/start",  datatest_start_handler);
+    REG(HTTP_POST, "/api/datatest/stop",   datatest_stop_handler);
+    REG(HTTP_GET,  "/api/datatest/status", datatest_status_handler);
     REG(HTTP_POST, "/api/system/reboot",   reboot_handler);
     REG(HTTP_POST, "/api/system/reset",    factory_reset_handler);
     REG(HTTP_POST, "/api/system/ota",      ota_handler);
@@ -540,5 +625,5 @@ void rest_api_init(httpd_handle_t server)
 
     #undef REG
 
-    ESP_LOGI(TAG, "REST API: 17 endpoints registered");
+    ESP_LOGI(TAG, "REST API: 20 endpoints registered");
 }

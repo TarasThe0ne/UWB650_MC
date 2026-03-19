@@ -87,6 +87,7 @@ CSS_COMMON
 "<a href='/' class='active'>Dashboard</a>"
 "<a href='/settings'>Settings</a>"
 "<a href='/wifi'>WiFi</a>"
+"<a href='/datatest'>Data Test</a>"
 "</nav>"
 "<div class='container'>"
 
@@ -234,6 +235,7 @@ CSS_COMMON
 "<a href='/'>Dashboard</a>"
 "<a href='/settings' class='active'>Settings</a>"
 "<a href='/wifi'>WiFi</a>"
+"<a href='/datatest'>Data Test</a>"
 "</nav>"
 "<div class='container'>"
 
@@ -607,6 +609,143 @@ JS_HELPERS
 
 "loadWifiStatus();"
 "setInterval(loadWifiStatus,5000);"
+"</script>"
+"</body></html>";
+
+// ========================================================================
+//  PAGE: Data Test (/datatest)
+// ========================================================================
+
+const char PAGE_DATATEST[] =
+"<!DOCTYPE html><html><head><meta charset='UTF-8'>"
+"<meta name='viewport' content='width=device-width,initial-scale=1'>"
+"<title>UWB650 Data Test</title>"
+CSS_COMMON
+"<style>"
+".console-out{background:var(--bg);border:1px solid var(--border);padding:8px;min-height:100px;"
+"font-size:12px;color:var(--green);white-space:pre-wrap;margin-top:8px;border-radius:4px;max-height:300px;overflow-y:auto}"
+".stat-val{font-size:24px;font-weight:bold;color:var(--accent)}"
+".stat-label{font-size:11px;color:var(--text2)}"
+".stat-box{text-align:center;padding:10px}"
+".stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}"
+"</style>"
+"</head><body>"
+"<nav>"
+"<span class='title'>UWB650 Tester</span>"
+"<a href='/'>Dashboard</a>"
+"<a href='/settings'>Settings</a>"
+"<a href='/wifi'>WiFi</a>"
+"<a href='/datatest' class='active'>Data Test</a>"
+"</nav>"
+"<div class='container'>"
+
+// Control card
+"<div class='card'>"
+"<h2>UWB Data Transmission Test</h2>"
+"<div class='row'>"
+"<div class='field'><label>Mode</label>"
+"<select id='mode'><option value='tx'>TX (Send)</option><option value='rx'>RX (Receive)</option></select></div>"
+"<div class='field'><label>Target Address (hex)</label>"
+"<input id='target' value='0001' maxlength='4' style='width:80px'></div>"
+"<div class='field'><label>Interval (ms)</label>"
+"<input type='number' id='interval' value='200' min='50' max='5000' style='width:80px'></div>"
+"<div class='field'><label>&nbsp;</label>"
+"<button class='primary' id='btn-start' onclick='startTest()'>Start</button>"
+"<button id='btn-stop' onclick='stopTest()' style='margin-left:6px;display:none'>Stop</button></div>"
+"</div>"
+"<div style='font-size:12px;color:var(--text2);margin-top:6px'>"
+"TX: sends simulated NMEA coordinates to target via UWB<br>"
+"RX: listens for incoming UWB data and displays it"
+"</div>"
+"</div>"
+
+// Stats card
+"<div class='card'>"
+"<h2>Statistics</h2>"
+"<div class='stats-row'>"
+"<div class='stat-box'><div class='stat-val' id='st-pkt'>0</div><div class='stat-label'>Packets</div></div>"
+"<div class='stat-box'><div class='stat-val' id='st-bytes'>0</div><div class='stat-label'>Bytes</div></div>"
+"<div class='stat-box'><div class='stat-val' id='st-rate'>0</div><div class='stat-label'>Bytes/sec</div></div>"
+"<div class='stat-box'><div class='stat-val' id='st-time'>0s</div><div class='stat-label'>Elapsed</div></div>"
+"</div>"
+"</div>"
+
+// Received data console (for RX mode)
+"<div class='card' id='rx-card' style='display:none'>"
+"<h2>Received Data</h2>"
+"<div class='console-out' id='rx-out'></div>"
+"</div>"
+
+"</div>" // container
+
+"<div class='wsbar'><span id='ws-status'>ws: connecting...</span></div>"
+
+JS_HELPERS
+
+"<script>"
+"var running=false,curMode='tx',pollTimer=null;"
+
+"function startTest(){"
+"var mode=$('mode').value;"
+"var body={mode:mode};"
+"if(mode==='tx'){"
+"body.targetAddr=$('target').value.toUpperCase();"
+"body.intervalMs=parseInt($('interval').value)||200;"
+"}"
+"safeFetch('/api/datatest/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})"
+".then(r=>r.json()).then(d=>{"
+"if(d.success){"
+"running=true;curMode=mode;"
+"$('btn-start').style.display='none';$('btn-stop').style.display='inline';"
+"$('rx-card').style.display=(mode==='rx')?'block':'none';"
+"$('rx-out').textContent='';"
+"toast(d.message,true);"
+"pollTimer=setInterval(pollStats,1000);"
+"}else{toast(d.error||'Failed',false)}"
+"}).catch(e=>toast('Error: '+e,false))}"
+
+"function stopTest(){"
+"safeFetch('/api/datatest/stop',{method:'POST'})"
+".then(r=>r.json()).then(d=>{"
+"running=false;"
+"$('btn-start').style.display='inline';$('btn-stop').style.display='none';"
+"if(pollTimer){clearInterval(pollTimer);pollTimer=null}"
+"toast(d.message,true);"
+"pollStats();"
+"}).catch(e=>toast('Error: '+e,false))}"
+
+"function pollStats(){"
+"safeFetch('/api/datatest/status').then(r=>r.json()).then(d=>{"
+"var isTx=(d.state==='tx');"
+"var pkts=isTx?d.packetsSent:d.packetsReceived;"
+"var bytes=isTx?d.bytesSent:d.bytesReceived;"
+"var rate=isTx?d.txBytesPerSec:d.rxBytesPerSec;"
+"$('st-pkt').textContent=pkts;"
+"$('st-bytes').textContent=bytes>1024?(bytes/1024).toFixed(1)+'K':bytes;"
+"$('st-rate').textContent=rate>1024?(rate/1024).toFixed(1)+'K':Math.round(rate);"
+"var s=Math.floor(d.elapsedMs/1000);$('st-time').textContent=s+'s';"
+"if(d.state==='idle'&&running){"
+"running=false;$('btn-start').style.display='inline';$('btn-stop').style.display='none';"
+"if(pollTimer){clearInterval(pollTimer);pollTimer=null}}"
+"}).catch(()=>{})}"
+
+"function onWsMsg(m){"
+"if(m.type==='datatest'&&curMode==='rx'){"
+"var el=$('rx-out');"
+"el.textContent+=m.data+'\\n';"
+"if(el.scrollHeight>el.clientHeight)el.scrollTop=el.scrollHeight;"
+"}}"
+
+// Load initial state
+"safeFetch('/api/datatest/status').then(r=>r.json()).then(d=>{"
+"if(d.state!=='idle'){"
+"running=true;curMode=d.state;"
+"$('mode').value=d.state;"
+"$('btn-start').style.display='none';$('btn-stop').style.display='inline';"
+"$('rx-card').style.display=(d.state==='rx')?'block':'none';"
+"pollTimer=setInterval(pollStats,1000);"
+"pollStats();"
+"}}).catch(()=>{});"
 "</script>"
 "</body></html>";
 

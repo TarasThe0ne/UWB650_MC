@@ -203,6 +203,16 @@ void webserver_ws_broadcast_log(const char *level, const char *message)
     }
 }
 
+void webserver_ws_broadcast_data(const char *data, int len)
+{
+    char buf[384];
+    int n = snprintf(buf, sizeof(buf),
+        "{\"type\":\"datatest\",\"data\":\"%.*s\"}", len, data);
+    if (n > 0 && n < (int)sizeof(buf)) {
+        broadcast(buf, n);
+    }
+}
+
 int webserver_ws_client_count(void)
 {
     int count = 0;

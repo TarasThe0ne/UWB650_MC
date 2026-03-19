@@ -16,3 +16,6 @@ void webserver_ws_broadcast_log(const char *level, const char *message);
 
 // WebSocket client count
 int webserver_ws_client_count(void);
+
+// Broadcast received data test packet
+void webserver_ws_broadcast_data(const char *data, int len);

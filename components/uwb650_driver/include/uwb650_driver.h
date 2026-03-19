@@ -98,3 +98,38 @@ void uwb650_get_last_result(uwb650_range_result_t *out);
 // ---- Statistics ----
 void uwb650_get_stats(uwb650_stats_t *out);
 void uwb650_reset_stats(void);
+
+// ---- Data transmission test ----
+
+typedef enum {
+    UWB650_DATA_IDLE = 0,
+    UWB650_DATA_TRANSMITTING,
+    UWB650_DATA_RECEIVING,
+} uwb650_data_state_t;
+
+typedef struct {
+    uint32_t packets_sent;
+    uint32_t packets_received;
+    uint32_t bytes_sent;
+    uint32_t bytes_received;
+    uint32_t last_seq_received;
+    uint32_t start_time_ms;
+    uint32_t last_rx_time_ms;
+} uwb650_data_stats_t;
+
+typedef void (*uwb650_data_rx_cb_t)(const char *data, int len);
+
+// Start sending NMEA test data to target_addr at interval_ms
+esp_err_t uwb650_data_tx_start(uint16_t target_addr, uint32_t interval_ms);
+
+// Start receiving data (routes incoming non-AT lines to callback)
+esp_err_t uwb650_data_rx_start(uwb650_data_rx_cb_t cb);
+
+// Stop data test (either mode)
+esp_err_t uwb650_data_stop(void);
+
+uwb650_data_state_t uwb650_data_state(void);
+void uwb650_data_get_stats(uwb650_data_stats_t *out);
+
+// Write raw bytes to UART (bypasses AT prefix)
+void uwb650_uart_write_raw(const void *data, size_t len);
