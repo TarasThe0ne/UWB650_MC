@@ -354,6 +354,20 @@ CSS_COMMON
 "<div class='console-out' id='raw-out'>Ready.\n</div>"
 "</div>"
 
+// UART Bridge
+"<div class='card'>"
+"<h2>UART Bridge (TCP:3333)</h2>"
+"<div style='font-size:13px;margin-bottom:8px'>"
+"Status: <span id='br-status' style='color:var(--text2)'>---</span>"
+"</div>"
+"<button id='br-start' onclick='bridgeStart()'>Start Bridge</button>"
+"<button id='br-stop' onclick='bridgeStop()' style='margin-left:6px;display:none'>Stop Bridge</button>"
+"<div style='font-size:12px;color:var(--text2);margin-top:8px'>"
+"Connect with TCP client to <span id='br-addr'>IP</span>:3333<br>"
+"Use HW VSP / com0com for virtual COM port, or PuTTY raw TCP mode"
+"</div>"
+"</div>"
+
 // OTA Firmware Update
 "<div class='card'>"
 "<h2>Firmware Update (OTA)</h2>"
@@ -476,6 +490,26 @@ JS_HELPERS
 
 // Enter key to send
 "$('raw-cmd').addEventListener('keydown',function(e){if(e.key==='Enter')sendRaw()});"
+
+"function bridgeStart(){"
+"safeFetch('/api/bridge/start',{method:'POST'}).then(r=>r.json()).then(d=>{"
+"toast(d.message||d.error,d.success);bridgeStatus()}).catch(e=>toast('Error',false))}"
+
+"function bridgeStop(){"
+"safeFetch('/api/bridge/stop',{method:'POST'}).then(r=>r.json()).then(d=>{"
+"toast(d.message,d.success);bridgeStatus()}).catch(e=>toast('Error',false))}"
+
+"function bridgeStatus(){"
+"safeFetch('/api/bridge/status').then(r=>r.json()).then(d=>{"
+"var s=d.active?(d.clientConnected?'Active (client connected)':'Active (waiting for client)'):'Stopped';"
+"$('br-status').textContent=s;"
+"$('br-status').style.color=d.active?'var(--green)':'var(--text2)';"
+"$('br-start').style.display=d.active?'none':'inline';"
+"$('br-stop').style.display=d.active?'inline':'none';"
+"}).catch(()=>{})}"
+
+"$('br-addr').textContent=location.hostname;"
+"bridgeStatus();setInterval(bridgeStatus,3000);"
 
 "function uploadOta(){"
 "var file=$('ota-file').files[0];"

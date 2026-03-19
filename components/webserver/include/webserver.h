@@ -19,3 +19,9 @@ int webserver_ws_client_count(void);
 
 // Broadcast received data test packet
 void webserver_ws_broadcast_data(const char *data, int len);
+
+// UART bridge (TCP:3333 ↔ UART)
+esp_err_t uart_bridge_start(void);
+esp_err_t uart_bridge_stop(void);
+bool uart_bridge_is_active(void);
+bool uart_bridge_client_connected(void);

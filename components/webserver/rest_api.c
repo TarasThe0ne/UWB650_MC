@@ -17,7 +17,7 @@
 
 static const char *TAG = "rest";
 
-#define FW_VERSION "0.3.0"
+#define FW_VERSION "0.3.1"
 
 // ---- Helpers ----
 
@@ -500,6 +500,34 @@ static esp_err_t datatest_status_handler(httpd_req_t *req)
     return send_json(req, r);
 }
 
+// ---- POST /api/bridge/start ----
+
+static esp_err_t bridge_start_handler(httpd_req_t *req)
+{
+    esp_err_t err = uart_bridge_start();
+    if (err == ESP_OK) return send_ok(req, "UART bridge started on TCP port 3333");
+    return send_err(req, 500, "Failed to start bridge");
+}
+
+// ---- POST /api/bridge/stop ----
+
+static esp_err_t bridge_stop_handler(httpd_req_t *req)
+{
+    uart_bridge_stop();
+    return send_ok(req, "UART bridge stopped");
+}
+
+// ---- GET /api/bridge/status ----
+
+static esp_err_t bridge_status_handler(httpd_req_t *req)
+{
+    cJSON *r = cJSON_CreateObject();
+    cJSON_AddBoolToObject(r, "active", uart_bridge_is_active());
+    cJSON_AddBoolToObject(r, "clientConnected", uart_bridge_client_connected());
+    cJSON_AddNumberToObject(r, "port", 3333);
+    return send_json(req, r);
+}
+
 // ---- POST /api/system/ota ----
 
 static esp_err_t ota_handler(httpd_req_t *req)
@@ -613,6 +641,9 @@ void rest_api_init(httpd_handle_t server)
     REG(HTTP_POST, "/api/uwb/stats/reset", stats_reset_handler);
     REG(HTTP_POST, "/api/uwb/query",       uwb_query_handler);
     REG(HTTP_POST, "/api/uwb/command",     uwb_command_handler);
+    REG(HTTP_POST, "/api/bridge/start",   bridge_start_handler);
+    REG(HTTP_POST, "/api/bridge/stop",    bridge_stop_handler);
+    REG(HTTP_GET,  "/api/bridge/status",  bridge_status_handler);
     REG(HTTP_POST, "/api/datatest/start",  datatest_start_handler);
     REG(HTTP_POST, "/api/datatest/stop",   datatest_stop_handler);
     REG(HTTP_GET,  "/api/datatest/status", datatest_status_handler);
@@ -625,5 +656,5 @@ void rest_api_init(httpd_handle_t server)
 
     #undef REG
 
-    ESP_LOGI(TAG, "REST API: 20 endpoints registered");
+    ESP_LOGI(TAG, "REST API: 23 endpoints registered");
 }

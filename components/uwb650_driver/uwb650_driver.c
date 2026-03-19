@@ -55,6 +55,10 @@ static struct {
     uint16_t        target_addr;
     uwb650_ranging_cb_t ranging_cb;
 
+    // Bridge mode
+    bool            bridge_mode;
+    uwb650_bridge_rx_cb_t bridge_rx_cb;
+
     // Data transmission test
     uwb650_data_state_t data_state;
     bool            data_mode;       // RX task routes non-AT lines to callback
@@ -160,15 +164,25 @@ bool uwb650_is_ready(void)
 
 static void rx_task(void *arg)
 {
-    uint8_t byte;
+    uint8_t rx_chunk[128];
     ESP_LOGI(TAG, "RX task started on UART%d", UWB_UART_NUM);
     uint32_t idle_count = 0;
 
     while (1) {
-        int len = uart_read_bytes(UWB_UART_NUM, &byte, 1, pdMS_TO_TICKS(100));
+        // Bridge mode: forward raw bytes in chunks
+        if (s_drv.bridge_mode) {
+            int len = uart_read_bytes(UWB_UART_NUM, rx_chunk, sizeof(rx_chunk),
+                                       pdMS_TO_TICKS(20));
+            if (len > 0 && s_drv.bridge_rx_cb) {
+                s_drv.bridge_rx_cb(rx_chunk, len);
+            }
+            continue;
+        }
+
+        // Normal mode: read byte by byte, accumulate lines
+        int len = uart_read_bytes(UWB_UART_NUM, rx_chunk, 1, pdMS_TO_TICKS(100));
         if (len <= 0) {
             idle_count++;
-            // Log every 30 seconds of silence to show RX task is alive
             if (idle_count == 300) {
                 ESP_LOGI(TAG, "RX: no data for 30s (UART%d alive, rx_bytes=%lu)",
                          UWB_UART_NUM, (unsigned long)s_drv.stats.rx_count);
@@ -178,6 +192,7 @@ static void rx_task(void *arg)
         }
         idle_count = 0;
 
+        uint8_t byte = rx_chunk[0];
         s_drv.stats.rx_count++;
 
         // Accumulate line until \n
@@ -936,4 +951,44 @@ void uwb650_data_get_stats(uwb650_data_stats_t *out)
     xSemaphoreTake(s_drv.data_mutex, portMAX_DELAY);
     *out = s_drv.data_stats;
     xSemaphoreGive(s_drv.data_mutex);
+}
+
+// ---- Bridge mode ----
+
+esp_err_t uwb650_bridge_start(uwb650_bridge_rx_cb_t cb)
+{
+    if (!s_drv.initialized) return ESP_ERR_INVALID_STATE;
+    if (s_drv.bridge_mode) return ESP_OK;
+
+    // Stop any active operations
+    if (s_drv.ranging_active) uwb650_ranging_stop();
+    if (s_drv.data_state != UWB650_DATA_IDLE) uwb650_data_stop();
+
+    s_drv.bridge_rx_cb = cb;
+    s_drv.bridge_mode = true;
+
+    // Flush any stale data
+    uart_flush_input(UWB_UART_NUM);
+    s_drv.line_pos = 0;
+
+    ESP_LOGI(TAG, "Bridge mode ENABLED — UART pass-through active");
+    return ESP_OK;
+}
+
+esp_err_t uwb650_bridge_stop(void)
+{
+    if (!s_drv.bridge_mode) return ESP_OK;
+
+    s_drv.bridge_mode = false;
+    s_drv.bridge_rx_cb = NULL;
+    s_drv.line_pos = 0;
+    uart_flush_input(UWB_UART_NUM);
+
+    ESP_LOGI(TAG, "Bridge mode DISABLED — normal AT mode restored");
+    return ESP_OK;
+}
+
+bool uwb650_bridge_active(void)
+{
+    return s_drv.bridge_mode;
 }

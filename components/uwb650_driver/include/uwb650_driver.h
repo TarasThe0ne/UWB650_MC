@@ -133,3 +133,10 @@ void uwb650_data_get_stats(uwb650_data_stats_t *out);
 
 // Write raw bytes to UART (bypasses AT prefix)
 void uwb650_uart_write_raw(const void *data, size_t len);
+
+// ---- UART Bridge mode ----
+// In bridge mode, rx_task forwards raw bytes to callback instead of AT parsing
+typedef void (*uwb650_bridge_rx_cb_t)(const uint8_t *data, size_t len);
+esp_err_t uwb650_bridge_start(uwb650_bridge_rx_cb_t cb);
+esp_err_t uwb650_bridge_stop(void);
+bool uwb650_bridge_active(void);

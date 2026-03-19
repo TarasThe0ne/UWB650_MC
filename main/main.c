@@ -12,7 +12,7 @@
 
 static const char *TAG = "main";
 
-#define FW_VERSION "0.3.0"
+#define FW_VERSION "0.3.1"
 
 void app_main(void)
 {
