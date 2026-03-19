@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "defaultMode": "auto",
+    "allow": [
+      "Bash(curl -s --connect-timeout 5 -X POST -H \"Content-Type: application/octet-stream\" --data-binary @d:/git/UWB650_MC/build/uwb650_mc.bin http://192.168.1.50/api/system/ota)",
+      "Bash(curl -s http://192.168.1.50/api/status)",
+      "Bash(curl -s -X POST -H \"Content-Type: application/json\" -d '{\"\"cmd\"\":\"\"VERSION?\"\"}' http://192.168.1.50/api/uwb/command)"
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//d/Espressif_tools/**)",
+      "Bash(cmd.exe //c build.bat)",
+      "Bash(cmd.exe //c \"d:\\\\git\\\\UWB650_MC\\\\build.bat\")",
+      "Bash(ls d:/git/UWB650_MC/build/*.bin)",
+      "Bash(cmd.exe //c \"set IDF_TOOLS_PATH=D:\\\\Espressif_tools && set IDF_PATH=D:\\\\Espressif && set IDF_PYTHON_ENV_PATH=D:\\\\Espressif_tools\\\\python_env\\\\idf5.5_py3.11_env && call D:\\\\Espressif\\\\export.bat >nul 2>&1 && cd /d D:\\\\git\\\\UWB650_MC && D:\\\\Espressif_tools\\\\python_env\\\\idf5.5_py3.11_env\\\\Scripts\\\\python.exe D:\\\\Espressif\\\\tools\\\\idf.py build\")",
+      "Bash(MSYSTEM= MSYS= cmd.exe //c \"set IDF_TOOLS_PATH=D:\\\\Espressif_tools&& set IDF_PATH=D:\\\\Espressif&& set IDF_PYTHON_ENV_PATH=D:\\\\Espressif_tools\\\\python_env\\\\idf5.5_py3.11_env&& set MSYSTEM=&& set MSYS=&& call D:\\\\Espressif\\\\export.bat >nul 2>&1&& cd /d D:\\\\git\\\\UWB650_MC&& D:\\\\Espressif_tools\\\\python_env\\\\idf5.5_py3.11_env\\\\Scripts\\\\python.exe D:\\\\Espressif\\\\tools\\\\idf.py build\")",
+      "Bash(unset MSYSTEM)",
+      "Bash(unset MSYS)",
+      "Bash(unset MINGW_PREFIX)",
+      "Bash(unset MINGW_CHOST)",
+      "Bash(cmd.exe //c \"set MSYSTEM= && set IDF_TOOLS_PATH=D:\\\\Espressif_tools && set IDF_PATH=D:\\\\Espressif && set IDF_PYTHON_ENV_PATH=D:\\\\Espressif_tools\\\\python_env\\\\idf5.5_py3.11_env && set PATH=D:\\\\Espressif\\\\tools;D:\\\\Espressif_tools\\\\python_env\\\\idf5.5_py3.11_env\\\\Scripts;D:\\\\Espressif_tools\\\\tools\\\\idf-git\\\\2.44.0\\\\cmd;D:\\\\Espressif_tools\\\\tools\\\\cmake\\\\3.24.0\\\\bin;D:\\\\Espressif_tools\\\\tools\\\\ninja\\\\1.12.1;%PATH% && cd /d D:\\\\git\\\\UWB650_MC && D:\\\\Espressif_tools\\\\python_env\\\\idf5.5_py3.11_env\\\\Scripts\\\\python.exe D:\\\\Espressif\\\\tools\\\\idf.py build\")",
+      "Bash(echo $MSYSTEM)",
+      "Bash(echo $MSYS)",
+      "Bash(env)",
+      "Bash(env -u MSYSTEM -u MSYS -u MINGW_PREFIX -u MINGW_CHOST -u MSYSTEM_PREFIX -u MSYSTEM_CARCH -u MSYSTEM_CHOST cmd.exe //c \"set IDF_TOOLS_PATH=D:\\\\Espressif_tools&& set IDF_PATH=D:\\\\Espressif&& set IDF_PYTHON_ENV_PATH=D:\\\\Espressif_tools\\\\python_env\\\\idf5.5_py3.11_env&& set PATH=D:\\\\Espressif_tools\\\\python_env\\\\idf5.5_py3.11_env\\\\Scripts;D:\\\\Espressif_tools\\\\tools\\\\idf-git\\\\2.44.0\\\\cmd;D:\\\\Espressif_tools\\\\tools\\\\cmake\\\\3.24.0\\\\bin;D:\\\\Espressif_tools\\\\tools\\\\ninja\\\\1.12.1;C:\\\\Windows\\\\system32;C:\\\\Windows&& cd /d D:\\\\git\\\\UWB650_MC&& D:\\\\Espressif_tools\\\\python_env\\\\idf5.5_py3.11_env\\\\Scripts\\\\python.exe D:\\\\Espressif\\\\tools\\\\idf.py build\")",
+      "Bash(powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \":*)",
+      "Bash(powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"D:\\\\git\\\\UWB650_MC\\\\build_ps.ps1\")",
+      "Bash(powershell -ExecutionPolicy Bypass -File build_ps.ps1)",
+      "WebFetch(domain:c60.work)",
+      "Bash(curl -s --header \"PRIVATE-TOKEN: glpat-08QToxBEFqTtIOwg-u13T286MQp1OjJmCA.01.0y1urtlgh\" \"https://c60.work/api/v4/projects?per_page=100&membership=true\")",
+      "Bash(curl -sv --header \"PRIVATE-TOKEN: glpat-08QToxBEFqTtIOwg-u13T286MQp1OjJmCA.01.0y1urtlgh\" \"https://c60.work/api/v4/projects?per_page=100\")",
+      "Bash(\"/c/Users/xfana/.platformio/penv/Scripts/python\" -c \"print\\(''hello''\\)\")",
+      "Read(//j/MoltBoat/!26 год текучка/Астрахань/**)",
+      "Bash(\"/c/Users/xfana/.platformio/penv/Scripts/python\" -c \":*)",
+      "Bash(powershell -Command \"Get-WMIObject Win32_SerialPort | Select-Object DeviceID, Caption, Description\")",
+      "Bash(powershell -Command \"Get-PnpDevice -Class Ports -Status OK | Select-Object FriendlyName, InstanceId\")",
+      "Bash(idf.py --version)",
+      "Bash(powershell -Command \"Get-PnpDevice -Class Ports -Status OK | Select-Object FriendlyName\")",
+      "WebFetch(domain:www.nicerf.com)"
+    ],
+    "additionalDirectories": [
+      "D:\\git\\Roma_All",
+      "J:\\MoltBoat\\!26 год текучка\\Астрахань"
+    ]
+  }
+}
